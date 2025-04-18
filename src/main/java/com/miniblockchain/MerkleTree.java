@@ -1,57 +1,50 @@
 package com.miniblockchain;
-
 import java.util.ArrayList;
 import java.util.List;
 
 public class MerkleTree {
     private List<String> transactions;
-    private List<List<String>> treeLevels;
-    private String root;
+    private List<String> tree;
 
-    public MerkleTree(List<Transaction> transactions) {
-        this.transactions = new ArrayList<>();
-        for (Transaction tx : transactions) {
-            this.transactions.add(tx.getTransactionId());
-        }
-        this.treeLevels = new ArrayList<>();
-        constructTree();
+    public MerkleTree(List<String> transactions) {
+        this.transactions = transactions;
+        this.tree = new ArrayList<>();
+        buildTree();
     }
 
-    private void constructTree() {
-        if (transactions.isEmpty()) {
-            root = "";
-            return;
-        }
+    private void buildTree() {
+        // Add all transactions as leaves
+        tree.addAll(transactions);
 
-        treeLevels.add(new ArrayList<>(transactions));
+        int levelOffset = 0;
+        int levelSize = transactions.size();
 
-        List<String> currentLevel = new ArrayList<>(transactions);
-
-        while (currentLevel.size() > 1) {
-            List<String> nextLevel = new ArrayList<>();
-
-            for (int i = 0; i < currentLevel.size(); i += 2) {
-                String left = currentLevel.get(i);
-                String right = (i + 1 < currentLevel.size()) ? currentLevel.get(i + 1) : left;
-                nextLevel.add(CryptoUtils.applySHA256(left + right));
+        // Build tree level by level
+        while (levelSize > 1) {
+            for (int i = 0; i < levelSize; i += 2) {
+                if (i + 1 < levelSize) {
+                    String left = tree.get(levelOffset + i);
+                    String right = tree.get(levelOffset + i + 1);
+                    tree.add(StringUtil.applySha256(left + right));
+                } else {
+                    // If odd number of elements, duplicate the last one
+                    String last = tree.get(levelOffset + i);
+                    tree.add(StringUtil.applySha256(last + last));
+                }
             }
-
-            treeLevels.add(nextLevel);
-            currentLevel = nextLevel;
+            levelOffset += levelSize;
+            levelSize = (levelSize + 1) / 2;
         }
-
-        root = currentLevel.get(0);
     }
 
     public String getRoot() {
-        return root;
+        if (tree.isEmpty()) {
+            return "";
+        }
+        return tree.get(tree.size() - 1);
     }
 
-    public void printTree() {
-        System.out.println("\nMerkle Tree Structure:");
-        for (int i = 0; i < treeLevels.size(); i++) {
-            System.out.println("Level " + i + ": " + treeLevels.get(i));
-        }
-        System.out.println("Root: " + root);
+    public List<String> getTree() {
+        return tree;
     }
 }

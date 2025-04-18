@@ -1,53 +1,107 @@
 package com.miniblockchain;
 
-import java.security.PrivateKey;
-import java.security.PublicKey;
-import java.util.Base64;
+import java.security.*;
+import java.security.spec.ECGenParameterSpec;
+import java.util.ArrayList;
 
 public class Transaction {
-    private String transactionId;
-    private String sender;
-    private String recipient;
-    private double amount;
-    private byte[] signature;
+    public String transactionId;
+    public PublicKey sender;
+    public PublicKey recipient;
+    public float value;
+    public byte[] signature;
 
-    public Transaction(String sender, String recipient, double amount, PrivateKey senderPrivateKey) throws Exception {
-        this.sender = sender;
-        this.recipient = recipient;
-        this.amount = amount;
-        this.signature = CryptoUtils.sign(senderPrivateKey, getDataToSign());
-        this.transactionId = calculateHash();
+    public ArrayList<TransactionInput> inputs = new ArrayList<>();
+    public ArrayList<TransactionOutput> outputs = new ArrayList<>();
+
+    private static int sequence = 0;
+
+    public Transaction(PublicKey from, PublicKey to, float value, ArrayList<TransactionInput> inputs) {
+        this.sender = from;
+        this.recipient = to;
+        this.value = value;
+        this.inputs = inputs;
     }
 
-    private String getDataToSign() {
-        return sender + recipient + amount;
+    private String calculateHash() {
+        sequence++;
+        return StringUtil.applySha256(
+                StringUtil.getStringFromKey(sender) +
+                        StringUtil.getStringFromKey(recipient) +
+                        Float.toString(value) + sequence
+        );
     }
 
-    public String calculateHash() {
-        String dataToHash = getDataToSign() + Base64.getEncoder().encodeToString(signature);
-        return CryptoUtils.applySHA256(dataToHash);
+    public void generateSignature(PrivateKey privateKey) {
+        String data = StringUtil.getStringFromKey(sender) +
+                StringUtil.getStringFromKey(recipient) +
+                Float.toString(value);
+        signature = CryptoUtils.applyECDSASig(privateKey, data);
     }
 
-    public boolean verifySignature() throws Exception {
-        String data = getDataToSign();
-        PublicKey publicKey = CryptoUtils.stringToPublicKey(sender);
-        return CryptoUtils.verify(publicKey, data, signature);
+    public boolean verifySignature() {
+        String data = StringUtil.getStringFromKey(sender) +
+                StringUtil.getStringFromKey(recipient) +
+                Float.toString(value);
+        return CryptoUtils.verifyECDSASig(sender, data, signature);
     }
 
-    // Getters
-    public String getTransactionId() { return transactionId; }
-    public String getSender() { return sender; }
-    public String getRecipient() { return recipient; }
-    public double getAmount() { return amount; }
-    public byte[] getSignature() { return signature; }
+    public boolean processTransaction() {
+        if (!verifySignature()) {
+            System.out.println("Transaction signature failed to verify");
+            return false;
+        }
 
-    @Override
-    public String toString() {
-        return "Transaction{" +
-                "id='" + transactionId + '\'' +
-                ", sender='" + sender + '\'' +
-                ", recipient='" + recipient + '\'' +
-                ", amount=" + amount +
-                '}';
+        // Gather transaction inputs (Make sure they are unspent)
+        for (TransactionInput i : inputs) {
+            i.UTXO = Blockchain.UTXOs.get(i.transactionOutputId);
+        }
+
+        // Check if transaction is valid
+        if (getInputsValue() < Blockchain.minimumTransaction) {
+            System.out.println("Transaction inputs too small: " + getInputsValue());
+            return false;
+        }
+
+        // Generate transaction outputs
+        float leftOver = getInputsValue() - value;
+        transactionId = calculateHash();
+
+        // Send value to recipient
+        outputs.add(new TransactionOutput(this.recipient, value, transactionId));
+
+        // Send the left over 'change' back to sender
+        if (leftOver > 0) {
+            outputs.add(new TransactionOutput(this.sender, leftOver, transactionId));
+        }
+
+        // Add outputs to Unspent list
+        for (TransactionOutput o : outputs) {
+            Blockchain.UTXOs.put(o.id, o);
+        }
+
+        // Remove transaction inputs from UTXO lists as spent
+        for (TransactionInput i : inputs) {
+            if (i.UTXO == null) continue; // Skip if can't find transaction
+            Blockchain.UTXOs.remove(i.UTXO.id);
+        }
+
+        return true;
+    }
+    public float getInputsValue() {
+        float total = 0;
+        for (TransactionInput i : inputs) {
+            if (i.UTXO == null) continue;
+            total += i.UTXO.value;
+        }
+        return total;
+    }
+
+    public float getOutputsValue() {
+        float total = 0;
+        for (TransactionOutput o : outputs) {
+            total += o.value;
+        }
+        return total;
     }
 }

@@ -13,6 +13,9 @@
         <maven.compiler.target>23</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
+
+
+
     <dependencies>
         <!-- Cryptography -->
         <dependency>
@@ -27,7 +30,6 @@
             <artifactId>jackson-databind</artifactId>
             <version>2.16.1</version>
         </dependency>
-
         <!-- For testing -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
